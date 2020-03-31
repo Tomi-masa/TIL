@@ -78,6 +78,83 @@ Public Sub subFileInput(ByRef pstrFPath As String, ByRef plngQua As Long, ByRef 
     blnPErrFlg = False
 End Sub
 ```
+```vb
+'**************************************************************************
+' モジュール名 ：subImportBodyCsv
+' 機能         ：CMS概要をCMS_body_workにインポートする
+'                概要→詳細の順である必要がある
+'**************************************************************************
+Private Sub subImportBodyCsv()
+    
+    On Error GoTo subImportBodyCsv_Err
+    
+    'インポートまえに土木、建築のどちらのモードで動かすか判別する必要があり、PJコード内の文字列で判別する
+    '土建モードチェック
+    Yosan_detail.Cells(1, 4).value = Kouji_body_main.Cells(2, 7)
+    '土建モードチェックを削除 redmine#598
+    strDoKenMode = Mid(Yosan_detail.Cells(1, 4).value, 5, 1)
+    'If strDoKenMode <> "D" And strDoKenMode <> "K" Then
+    '    MsgBox "プロジェクトコードが不適切です。", vbCritical
+    '    isSuccess = False
+    '    Exit Sub
+    'End If
+    
+    Dim strOpenFileName As String
+    strOpenFileName = Application.GetOpenFilename("CSVファイル(*.csv),*.csv", , "概要CSVを指定してください。")
+    
+    Dim lngCountCsvColun As Long
+    lngCountCsvColun = funCountCsvColumn(strOpenFileName)
+    
+    '列数によるファイルフォーマットチェック
+    If strOpenFileName <> "" And lngCountCsvColun <> cBodyColumns Then
+        MsgBox "ファイル未指定、または、概要CSVではありません。", vbCritical
+        isSuccess = False
+        Exit Sub
+    Else
+        'ファイル種類チェック
+        If strOpenFileName <> "False" Then
+            CMS_body_work.Cells.Clear
+        
+            With CMS_body_work.QueryTables.Add(Connection:= _
+                "TEXT;" & strOpenFileName, Destination:=Range("CMS_body_work!$A$1"))
+                .Name = "data"
+                .FieldNames = True
+                .RowNumbers = False
+                .FillAdjacentFormulas = False
+                .PreserveFormatting = True
+                .RefreshOnFileOpen = False
+                .RefreshStyle = xlOverwriteCells    'セルに上書き
+                .SavePassword = False
+                .SaveData = True
+                .AdjustColumnWidth = True
+                .RefreshPeriod = 0
+                .TextFilePromptOnRefresh = False
+                .TextFilePlatform = 932             'CMSはShift_JIS(932)。UTF-8の場合は65001
+                .TextFileStartRow = 1               'CMSはヘッダ無し。1 行目から読み込み
+                .TextFileParseType = xlDelimited
+                .TextFileTextQualifier = xlTextQualifierDoubleQuote
+                .TextFileConsecutiveDelimiter = False
+                .TextFileTabDelimiter = False
+                .TextFileSemicolonDelimiter = False
+                .TextFileCommaDelimiter = True
+                .TextFileSpaceDelimiter = False
+                .TextFileColumnDataTypes = Array(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2) 'MAX列数にしておく
+                .TextFileTrailingMinusNumbers = True
+                .Refresh BackgroundQuery:=False
+                .Delete                          ' CSV との接続を解除
+            End With
+        End If
+    End If
+    
+    isSuccess = True
+    Exit Sub
+    
+subImportBodyCsv_Err:
+    isSuccess = False
+    MsgBox "概要CSVのインポートに失敗しました。" & Err.Description, vbCritical
+    
+End Sub
+```
 ## VBA高速化
 ```vb
 '**************************************************************************
@@ -148,5 +225,33 @@ Public Function funFilePath(ByRef pTitle As String, ByRef pInitPath As String, B
             blnPErrFlg = True
         End If
     End With
+End Function
+```
+## マスタから値を取得
+```vb
+'**************************************************************************
+'  モジュール名     ：  funYosan_body_GetVerName(予算概要シート名称を取得)
+'  引数             ：  対象文字列
+'  戻り値           ：  名称
+'  用途             ：  予算概要シートに入力された前回/今回予算Ver.から名称を取得
+'**************************************************************************
+Public Function funYosan_body_GetVerName(strGetVer As String, Yosan_body_Sheet As Object) As String
+
+    Dim strGetVerNmae As String
+    Dim strCells As String
+
+    ' 入力されたVerを元に名称を取得(redmine#393)
+    If (Left(strGetVer, 1) = "M") Then
+        'M=見積原価予算の名称を取得
+        strCells = "DO8:DP" & CStr(Common_mst.Range("DO8").End(xlDown).Row)
+    Else
+        'J=実行予算の名称を取得
+        strCells = "DR8:DS" & CStr(Common_mst.Range("DR8").End(xlDown).Row)
+    End If
+    
+    strGetVerNmae = WorksheetFunction.VLookup(strGetVer, Common_mst.Range(strCells), 2, False)
+
+    funYosan_body_GetVerName = strGetVerNmae
+
 End Function
 ```
